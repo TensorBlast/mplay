@@ -59,7 +59,7 @@ class mplaywin():
         self.image_label = Label(self.mainframe)
         self.image_label.pack()
         proc, q = initializeplayback()
-        root.after(0, func=lambda: update_all(root, self.image_label, q))
+        root.after(5000, func=lambda: update_all(self.mainframe, self.image_label, q))
         root.mainloop()
         proc.terminate()
 
@@ -72,6 +72,7 @@ class mplaywin():
 
 def update_all(root, image_label, qu):
     update_image(root, qu, image_label)
+    cv2.waitKey(42)
     root.after(0, func=lambda: update_all(root, image_label, qu))
 
 
@@ -86,13 +87,14 @@ def update_image(root, queue, image_label):
 
 
 def image_capture(queue):
-    vidFile = cv2.VideoCapture("lotgh.mkv")
+    vidFile = cv2.VideoCapture("plox.mov")
     while True:
         try:
             flag, frame = vidFile.read()
             if flag == 0:
                 break
             queue.put(frame)
+            cv2.waitKey(30)
         except:
             continue
 
