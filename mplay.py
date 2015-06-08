@@ -61,6 +61,7 @@ class mplaywin():
         proc, q = initializeplayback()
         root.after(0, func=lambda: update_all(root, self.image_label, q))
         root.mainloop()
+        proc.terminate()
 
     def calc(self, *args):
         try:
@@ -85,14 +86,13 @@ def update_image(root, queue, image_label):
 
 
 def image_capture(queue):
-    vidFile = cv2.VideoCapture(0)
+    vidFile = cv2.VideoCapture("lotgh.mkv")
     while True:
         try:
             flag, frame = vidFile.read()
             if flag == 0:
                 break
             queue.put(frame)
-            cv2.waitKey(20)
         except:
             continue
 
