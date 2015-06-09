@@ -2,7 +2,7 @@ __author__ = 'ankit'
 
 from Tkinter import *
 from ttk import Frame, Button, Style
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Lock
 from Queue import Empty
 import numpy as np
 import cv2
@@ -49,15 +49,18 @@ class mplaywin():
         self.buttonframe = Frame(root, padding="2 2 11 11")
         self.buttonframe.pack(side="bottom", fill="both", expand=True)
 
-        self.selectbutton = Button(self.buttonframe, text="Select").grid(column=0, row=0, sticky=W)
+        self.selectbutton = Button(self.buttonframe, text="Select")
+        self.selectbutton.grid(column=0, row=0, sticky=W)
         self.playbutton = Button(self.buttonframe, text="Play").grid(column=1, row=0, sticky=W)
         for child in self.buttonframe.winfo_children(): child.grid_configure(padx=5, pady=5)
         self.buttonframe.rowconfigure(0, weight=1)
         self.buttonframe.columnconfigure(0, weight=1)
         self.buttonframe.columnconfigure(1, weight=1)
 
+        self.selectbutton.configure(command=select)
         self.image_label = Label(self.mainframe)
         self.image_label.pack()
+        self.vidname = ""
         proc, q = initializeplayback()
         root.after(5000, func=lambda: update_all(self.mainframe, self.image_label, q))
         root.mainloop()
@@ -70,14 +73,19 @@ class mplaywin():
         except ValueError:
             pass
 
+def select():
+    print "Select Button pressed..."
 def update_all(root, image_label, qu):
     update_image(root, qu, image_label)
     cv2.waitKey(42)
     root.after(0, func=lambda: update_all(root, image_label, qu))
 
 
+mutex = Lock()
 def update_image(root, queue, image_label):
+    mutex.acquire()
     frame = queue.get()
+    mutex.release()
     im = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     a = Image.fromarray(im)
     b = ImageTk.PhotoImage(image=a)
@@ -93,7 +101,9 @@ def image_capture(queue):
             flag, frame = vidFile.read()
             if flag == 0:
                 break
+            mutex.acquire()
             queue.put(frame)
+            mutex.release()
             cv2.waitKey(30)
         except:
             continue
