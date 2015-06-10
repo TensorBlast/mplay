@@ -1,52 +1,28 @@
 __author__ = 'ankit'
 
+import pygame as pg
+import threading
+from pygame.locals import *
 from Tkinter import *
-from ttk import Frame, Button, Style
-from multiprocessing import Process, Queue, Lock
-from Queue import Empty
-import numpy as np
-import cv2
-from PIL import Image, ImageTk
+from ttk import Frame
+from tkFileDialog import askopenfilename, askopenfile
+import sys, os
+if sys.platform == 'win32' and sys.getwindowsversion()[0] >=5:
+    os.environ['SDL_VIDEODRIVER'] = 'windib'
 
+class playar(Frame):
 
-class mplaywin():
-    def quit_(self, root, process):
-        process.join()
-        root.destroy()
+    def __init__(self, parent):
+        Frame.__init__(self, parent)
+        self.filenm=None
+        self.pack(fill=BOTH, expand=1)
+        self.parent = parent
+        self.initplayer()
 
-    def __init__(self):
-        root = Tk()
-        root.title("mplay Video Player")
-
-        # mainframe = ttk.Frame(root, padding="3 3 12 12")
-        # mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
-        # mainframe.columnconfigure(0, weight=1)
-        # mainframe.rowconfigure(0, weight=1)
-        #
-        # self.feet = StringVar()
-        # self.met = StringVar()
-        #
-        # feet_enter = ttk.Entry(mainframe, width=7, textvariable=self.feet)
-        # feet_enter.grid(column=2, row=1, sticky=(W, E))
-        #
-        # ttk.Label(mainframe, textvariable=self.met).grid(column=2, row=2, sticky=(W, E))
-        # ttk.Button(mainframe, text="Calculate", command=self.calc).grid(column=4, row=4, sticky=W)
-        #
-        # ttk.Label(mainframe, text="Feet: ").grid(column=1, row=1, sticky=E)
-        # ttk.Label(mainframe, text="Meters: ").grid(column=1, row=2, sticky=E)
-        #
-        # for child in mainframe.winfo_children(): child.grid_configure(padx=5, pady=5)
-        #
-        # feet_enter.focus()
-        # root.bind('<Return>', self.calc)
-        #
-        # root.mainloop()
-        root.configure(width=840, height=500)
-        self.mainframe = Frame(root, padding="3 3 12 12")
-        self.mainframe.pack(side="top", fill="both", expand=True)
-        self.mainframe.configure(width=800, height=480)
-
-        self.buttonframe = Frame(root, padding="2 2 11 11")
+    def initplayer(self):
+        self.videoFrame = Frame(self, width=800, height=480)
+        self.videoFrame.pack(side="top", fill="both", expand=True)
+        self.buttonframe = Frame(self, padding="2 2 11 11")
         self.buttonframe.pack(side="bottom", fill="x", expand=True)
 
         self.selectbutton = Button(self.buttonframe, text="Select")
@@ -57,66 +33,59 @@ class mplaywin():
         self.buttonframe.columnconfigure(0, weight=1)
         self.buttonframe.columnconfigure(1, weight=1)
 
-        self.selectbutton.configure(command=select)
-        self.image_label = Label(self.mainframe)
-        self.image_label.pack(fill="both", expand=True)
-        self.vidname = ""
-        proc, q = initializeplayback()
-        root.after(5000, func=lambda: update_all(self.mainframe, self.image_label, q))
-        root.mainloop()
-        proc.terminate()
+    def setwh(self,w,h):
+        self.videoFrame.configure(width=w, height=h)
 
-    def calc(self, *args):
-        try:
-            val = float(self.feet.get())
-            self.met.set((0.3048 * val * 10000.0 + 0.5) / 10000.0)
-        except ValueError:
-            pass
+    def quit(self):
+        print "QUIT CALLED"
+        pg.quit()
+        self.destroy()
 
-def select():
-    print "Select Button pressed..."
-def update_all(root, image_label, qu):
-    update_image(root, qu, image_label)
-    root.after(0, func=lambda: update_all(root, image_label, qu))
-
-
-mutex = Lock()
-def update_image(root, queue, image_label):
-    mutex.acquire()
-    frame = queue.get()
-    mutex.release()
-    im = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    a = Image.fromarray(im)
-    b = ImageTk.PhotoImage(image=a)
-    image_label.configure(image=b)
-    image_label._image_cache = b
-    root.update()
+def pygameupdate(player, frame):
+    global done
+    clock = pg.time.Clock()
+    pg.event.set_allowed((QUIT, KEYDOWN))
+    while not done:
+        frame.update()
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                player.stop()
+                done = True
+        pg.display.update()
+        clock.tick(60.0)
+    frame.quit()
 
 
-def image_capture(queue):
-    vidFile = cv2.VideoCapture("lotgh.mkv")
-    while True:
-        try:
-            flag, frame = vidFile.read()
-            if flag == 0:
-                break
-            mutex.acquire()
-            queue.put(frame)
-            mutex.release()
-            cv2.waitKey(30)
-        except:
-            continue
+def pygamet(frame):
+    global filenm
+    pg.init()
+    pg.mixer.quit()
+    if filenm is None or filenm=="":
+        filenm="cartest.mp4"
+    player = pg.movie.Movie(filenm)
+    w, h =[size * 3 for size in player.get_size()]
+    screen = pg.display.set_mode((w+10, h+10))
+    frame.setwh(w+5, h+5)
+    player.set_display(screen, pg.Rect((5,5),(w,h)))
+    player.play()
+    pygameupdate(player,frame)
+def filedlog(**opt):
+    name = askopenfilename(**opt)
+    return name
 
-
-def initializeplayback():
-    queue = Queue()
-    print 'initializeplayback called...'
-    proc = Process(target=image_capture, args=(queue,))
-    proc.start()
-    return proc, queue
-
-
-
+done = False
+filenm = "MELT.MPG"
+def stopeverything():
+    global done
+    done = True
 
 if __name__ == "__main__":
-    test = mplaywin()
+    filenm = filedlog(filetypes = [("MPEG Video Files","*.MPG;*.MPEG")])
+    print filenm
+    root = Tk()
+    root.title("Video Player")
+    root.wm_protocol("WM_DELETE_WINDOW", stopeverything)
+    a = playar(root)
+    os.environ['SDL_WINDOWID'] = str(a.videoFrame.winfo_id())
+    pygamet(a)
+    root.destroy()
