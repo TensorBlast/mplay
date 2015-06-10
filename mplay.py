@@ -47,7 +47,7 @@ class mplaywin():
         self.mainframe.configure(width=800, height=480)
 
         self.buttonframe = Frame(root, padding="2 2 11 11")
-        self.buttonframe.pack(side="bottom", fill="both", expand=True)
+        self.buttonframe.pack(side="bottom", fill="x", expand=True)
 
         self.selectbutton = Button(self.buttonframe, text="Select")
         self.selectbutton.grid(column=0, row=0, sticky=W)
@@ -59,7 +59,7 @@ class mplaywin():
 
         self.selectbutton.configure(command=select)
         self.image_label = Label(self.mainframe)
-        self.image_label.pack()
+        self.image_label.pack(fill="both", expand=True)
         self.vidname = ""
         proc, q = initializeplayback()
         root.after(5000, func=lambda: update_all(self.mainframe, self.image_label, q))
@@ -77,7 +77,6 @@ def select():
     print "Select Button pressed..."
 def update_all(root, image_label, qu):
     update_image(root, qu, image_label)
-    cv2.waitKey(42)
     root.after(0, func=lambda: update_all(root, image_label, qu))
 
 
@@ -95,7 +94,7 @@ def update_image(root, queue, image_label):
 
 
 def image_capture(queue):
-    vidFile = cv2.VideoCapture("plox.mov")
+    vidFile = cv2.VideoCapture("lotgh.mkv")
     while True:
         try:
             flag, frame = vidFile.read()
