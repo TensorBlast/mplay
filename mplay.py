@@ -4,7 +4,6 @@ from Tkinter import *
 from ttk import Frame
 from tkFileDialog import askopenfilename, askopenfile
 from tkMessageBox import showerror, showinfo
-import sys, os
 from subprocess import *
 
 
@@ -25,8 +24,8 @@ class mainframe(Frame):
         self.buttonframe.pack(side="bottom", fill="x", expand=True)
 
         self.selectbutton = Button(self.buttonframe, text="Select")
-        self.selectbutton.grid(column=0, row=0, sticky=W)
-        self.playbutton = Button(self.buttonframe, text="Play").grid(column=1, row=0, sticky=W)
+        self.selectbutton.grid(column=0, row=0, sticky=[E,W])
+        self.playbutton = Button(self.buttonframe, text="Play").grid(column=1, row=0, sticky=[E,W])
         for child in self.buttonframe.winfo_children(): child.grid_configure(padx=5, pady=5)
         self.buttonframe.rowconfigure(0, weight=1)
         self.buttonframe.columnconfigure(0, weight=1)
@@ -42,17 +41,17 @@ class mainframe(Frame):
     def play(self):
         if self.filenm is not None and self.filenm != "":
             winid = self.videoFrame.winfo_id()
-            if self.player_process is not None:
+            if self.mplayer_isrunning():
                 self.player_process.kill()
             try:
-                self.player_process = Popen(["mpv","--wid",str(winid),self.filenm],stdin=PIPE)
+                self.player_process = Popen(["mplayer","-slave","-quiet","-wid",str(winid),self.filenm],stdin=PIPE, stdout=PIPE)
             except:
                 showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[1]),str(sys.exc_info()[2])]))
 
     def playpause(self, event):
         if self.player_process is None:
             return
-        self.command_player(0x0201)
+        self.command_player("pause")
 
     def setwh(self,w,h):
         self.videoFrame.configure(width=w, height=h)
@@ -61,14 +60,25 @@ class mainframe(Frame):
         print "QUIT CALLED"
         self.destroy()
 
-    def command_player(self, comd):
+    def mplayer_isrunning(self):
         if self.player_process is not None:
-            print 'Attempting to write %s to mpv' % str(comd)
-            comd = str(comd)
-            self.player_process.stdin.write(comd+'\n')
+            return (self.player_process.poll() is  None)
+        else:
+            return False
+
+    def command_player(self, comd):
+        if comd == "pause" and self.mplayer_isrunning():
+            try:
+                self.player_process.stdin.write("pause\n")
+                self.player_process.stdin.flush()
+            except :
+                showerror("Error","Error passing command to mplayer\n%s"%sys.exc_info()[1])
 
     def stop(self):
-        self.player_process.kill()
+        if self.mplayer_isrunning():
+            self.player_process.stdin.write("quit\n")
+            self.player_process.stdin.flush()
+            print self.player_process.stdout.read()
         self.player_process = None
 
 
