@@ -1,16 +1,14 @@
 __author__ = 'ankit'
 
-import pygame as pg
-import threading
-from pygame.locals import *
 from Tkinter import *
 from ttk import Frame
 from tkFileDialog import askopenfilename, askopenfile
+from tkMessageBox import showerror, showinfo
 import sys, os
-if sys.platform == 'win32' and sys.getwindowsversion()[0] >=5:
-    os.environ['SDL_VIDEODRIVER'] = 'windib'
+from subprocess import *
 
-class playar(Frame):
+
+class mainframe(Frame):
 
     def __init__(self, parent):
         Frame.__init__(self, parent)
@@ -18,6 +16,7 @@ class playar(Frame):
         self.pack(fill=BOTH, expand=1)
         self.parent = parent
         self.initplayer()
+        self.player_process = None
 
     def initplayer(self):
         self.videoFrame = Frame(self, width=800, height=480)
@@ -33,59 +32,57 @@ class playar(Frame):
         self.buttonframe.columnconfigure(0, weight=1)
         self.buttonframe.columnconfigure(1, weight=1)
 
+        self.selectbutton.configure(command = self.fileopen)
+        self.videoFrame.bind("<Button-1>",self.playpause)
+
+    def fileopen(self):
+        self.filenm = self.filenm=askopenfilename(filetypes=[("Supported Files","*.mp4;*.mkv;*.mpg;*.avi")])
+        self.play()
+
+    def play(self):
+        if self.filenm is not None and self.filenm != "":
+            winid = self.videoFrame.winfo_id()
+            if self.player_process is not None:
+                self.player_process.kill()
+            try:
+                self.player_process = Popen(["mpv","--wid",str(winid),self.filenm],stdin=PIPE)
+            except:
+                showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[1]),str(sys.exc_info()[2])]))
+
+    def playpause(self, event):
+        if self.player_process is None:
+            return
+        self.command_player(0x0201)
+
     def setwh(self,w,h):
         self.videoFrame.configure(width=w, height=h)
 
     def quit(self):
         print "QUIT CALLED"
-        pg.quit()
         self.destroy()
 
-def pygameupdate(player, frame):
-    global done
-    clock = pg.time.Clock()
-    pg.event.set_allowed((QUIT, KEYDOWN))
-    while not done:
-        frame.update()
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                player.stop()
-                done = True
-        pg.display.update()
-        clock.tick(60.0)
-    frame.quit()
+    def command_player(self, comd):
+        if self.player_process is not None:
+            print 'Attempting to write %s to mpv' % str(comd)
+            comd = str(comd)
+            self.player_process.stdin.write(comd+'\n')
+
+    def stop(self):
+        self.player_process.kill()
+        self.player_process = None
 
 
-def pygamet(frame):
-    global filenm
-    pg.init()
-    pg.mixer.quit()
-    if filenm is None or filenm=="":
-        filenm="cartest.mp4"
-    player = pg.movie.Movie(filenm)
-    w, h =[size * 3 for size in player.get_size()]
-    screen = pg.display.set_mode((w+10, h+10))
-    frame.setwh(w+5, h+5)
-    player.set_display(screen, pg.Rect((5,5),(w,h)))
-    player.play()
-    pygameupdate(player,frame)
-def filedlog(**opt):
-    name = askopenfilename(**opt)
-    return name
+primary = None
 
-done = False
-filenm = "MELT.MPG"
 def stopeverything():
-    global done
-    done = True
+    global primary
+    primary.stop()
+    primary.destroy()
+    root.destroy()
 
 if __name__ == "__main__":
-    filenm = filedlog(filetypes = [("MPEG Video Files","*.MPG;*.MPEG")])
-    print filenm
     root = Tk()
-    root.title("Video Player")
+    root.title('MPV X Video Player')
     root.wm_protocol("WM_DELETE_WINDOW", stopeverything)
-    a = playar(root)
-    os.environ['SDL_WINDOWID'] = str(a.videoFrame.winfo_id())
-    pygamet(a)
-    root.destroy()
+    primary = mainframe(root)
+    root.mainloop()
