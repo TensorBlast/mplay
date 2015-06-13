@@ -5,7 +5,8 @@ from ttk import Frame
 from tkFileDialog import askopenfilename, askopenfile
 from tkMessageBox import showerror, showinfo
 from subprocess import *
-import time
+from threading import Thread
+from Queue import Queue, Empty, LifoQueue
 
 class mainframe(Frame):
 
@@ -19,6 +20,8 @@ class mainframe(Frame):
         self.fstate = False
         self.paused = True
         self.trackmouse = True
+        self.stdout_thread = None
+        self.q = LifoQueue()
 
     def initplayer(self):
         self.parentframe = Frame(self)
@@ -28,15 +31,19 @@ class mainframe(Frame):
         self.buttonframe = Frame(self.parentframe, padding="2 2 1 1")
         self.buttonframe.pack(side="bottom", fill="x", expand=False)
 
+        self.seekbar = Scale(self.buttonframe, from_= 0, to=100, orient=HORIZONTAL)
+        self.seekbar.grid(column=0, columnspan=3, row=0, sticky=[N, E, S, W])
+
         self.selectbutton = Button(self.buttonframe, text="Select")
-        self.selectbutton.grid(column=0, row=0, sticky=[E,W])
+        self.selectbutton.grid(column=0, row=1, sticky=[E,W])
         self.playbutton = Button(self.buttonframe, text="Play")
         self.playbutton.config(command=self.playpause)
-        self.playbutton.grid(column=1, row=0, sticky=[E,W])
+        self.playbutton.grid(column=1, row=1, sticky=[E,W])
         self.fullscreenbutton = Button(self.buttonframe, text="Fullscreen", command=self.togglefullscreen)
-        self.fullscreenbutton.grid(column=2, row=0, sticky=[E,W])
+        self.fullscreenbutton.grid(column=2, row=1, sticky=[E,W])
         for child in self.buttonframe.winfo_children(): child.grid_configure(padx=5, pady=5)
         self.buttonframe.rowconfigure(0, weight=1)
+        self.buttonframe.rowconfigure(1, weight=1)
         self.buttonframe.columnconfigure(0, weight=1)
         self.buttonframe.columnconfigure(1, weight=1)
         self.buttonframe.columnconfigure(2, weight=1)
@@ -71,9 +78,11 @@ class mainframe(Frame):
         self.fstate = not self.fstate
         self.parent.attributes("-fullscreen",self.fstate)
         if self.fstate:
+            self.fullscreenbutton.config(text="Exit Fullscreen")
             self.buttonframe.pack_forget()
             self.videoFrame.config(cursor="none")
         else:
+            self.fullscreenbutton.config(text="Fullscreen")
             self.buttonframe.pack(side="bottom", fill="x", expand=False)
             self.videoFrame.after(5000, self.cursorhandler)
 
@@ -90,14 +99,28 @@ class mainframe(Frame):
                 self.paused = False
                 self.playbutton.configure(text="Pause")
                 self.player_process = Popen(["mplayer","-fs","-slave","-quiet","-wid",str(winid),self.filenm],stdin=PIPE, stdout=PIPE)
+                self.stdout_thread = Thread(target=self.enqueue_pipe, args=(self.player_process.stdout, self.q))
+                self.stdout_thread.daemon = True
+                self.stdout_thread.start()
+                self.seekthread = Thread(target=self.seekbar_updater, args=())
+                self.seekthread.daemon = True
+                #self.seekthread.start()
             except:
                 showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[1]),str(sys.exc_info()[2])]))
+
+    def getvidtime(self):
+        if self.mplayer_isrunning():
+            self.command_player("get_percent_pos")
+            self.player_process.stdout.flush()
+            str = self.readpipe()
+            return str
 
     def playpause(self, event=None):
         if self.player_process is None:
             return
         self.paused = not self.paused
         if self.paused:
+            print "VIDEO IS PAUSED /B/RO"
             self.playbutton.configure(text="Play")
         else:
             self.playbutton.configure(text="Pause")
@@ -117,18 +140,40 @@ class mainframe(Frame):
             return False
 
     def command_player(self, comd):
-        if comd == "pause" and self.mplayer_isrunning():
+        if self.mplayer_isrunning():
             try:
-                self.player_process.stdin.write("pause\n")
+                self.player_process.stdin.flush()
+                self.player_process.stdin.write("%s\n"%comd)
                 self.player_process.stdin.flush()
             except :
                 showerror("Error","Error passing command to mplayer\n%s"%sys.exc_info()[1])
+
+    def enqueue_pipe(self, out, q):
+        print 'enq'
+        for line in iter(out.readline, b''):
+            q.put(line)
+        out.close()
+
+    def seekbar_updater(self):
+        pos = self.getvidtime()
+        self.seekbar.set(int(pos))
+
+    def readpipe(self):
+        # print 'Trying to read PIPE...'
+        line = ""
+        try:
+            line = self.q.get_nowait()
+        except Empty:
+            print "Empty PIPE"
+        else:
+            return line
 
     def stop(self):
         if self.mplayer_isrunning():
             self.player_process.stdin.write("quit\n")
             self.player_process.stdin.flush()
-            print self.player_process.stdout.read()
+            self.player_process.stdout.flush()
+            print self.readpipe()
         self.player_process = None
 
 
