@@ -6,11 +6,6 @@ from tkFileDialog import askopenfilename, askopenfile
 from tkMessageBox import showerror, showinfo
 from subprocess import *
 import time
-from threading import Timer, Lock
-
-
-lock = Lock()
-buttonlock = Lock()
 
 class mainframe(Frame):
 
@@ -52,30 +47,25 @@ class mainframe(Frame):
         self.parent.bind("<Motion>",self.mouseops)
 
     def mouseops(self,event=None):
-        with lock:
-            self.videoFrame.config(cursor="")
-        Timer(5, self.cursorhandler, ()).start()
-
+        self.videoFrame.config(cursor="")
+        self.videoFrame.after(5000,self.cursorhandler)
         if self.trackmouse:
             x, y = self.parent.winfo_pointerx(), self.parent.winfo_pointery()
             windowx, windowy = self.parent.winfo_width(), self.parent.winfo_height()
             if self.fstate and (windowy - 30 <= y):
-                with buttonlock:
-                    self.buttonframe.pack(side="bottom", fill="x", expand=False)
-                    self.trackmouse = False
-                    Timer(5, self.mousetracker, ()).start()
+                self.buttonframe.pack(side="bottom", fill="x", expand=False)
+                self.trackmouse = False
+                self.parent.after(5000, self.mousetracker)
             elif self.fstate:
-                with buttonlock:
-                    self.buttonframe.pack_forget()
+                self.buttonframe.pack_forget()
 
     def mousetracker(self):
         print 'Mouse Tracker'
-        with buttonlock:
-            self.trackmouse = True
+        self.trackmouse = True
+        self.videoFrame.after(0,self.mouseops)
 
     def cursorhandler(self):
-        with lock:
-            self.videoFrame.config(cursor="none")
+        self.videoFrame.config(cursor="none")
 
     def togglefullscreen(self, event=None):
         self.fstate = not self.fstate
@@ -85,7 +75,7 @@ class mainframe(Frame):
             self.videoFrame.config(cursor="none")
         else:
             self.buttonframe.pack(side="bottom", fill="x", expand=False)
-            Timer(5, self.cursorhandler, ()).start()
+            self.videoFrame.after(5000, self.cursorhandler)
 
     def fileopen(self):
         self.filenm = self.filenm=askopenfilename(filetypes=[("Supported Files","*.mp4;*.mkv;*.mpg;*.avi;*.mov")])
