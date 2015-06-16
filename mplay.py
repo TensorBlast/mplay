@@ -8,7 +8,6 @@ from subprocess import *
 from threading import Thread
 from Queue import Queue, Empty, LifoQueue
 import os, sys
-import mplayer
 
 class mainframe(Frame):
 
@@ -123,21 +122,20 @@ class mainframe(Frame):
                     self.player_process = Popen(["mplayer","-fs","-slave","-quiet","-wid",str(winid),self.filenm],stdin=PIPE, stdout=PIPE)
                 else:
                     self.player_process = Popen(["mplayer","-fs","-slave","-quiet","-wid",str(winid),self.streamnm], stdin=PIPE, stdout=PIPE)
-                # self.stdout_thread = Thread(target=self.enqueue_pipe, args=(self.player_process.stdout, self.q))
-                # self.stdout_thread.daemon = True
-                # self.stdout_thread.start()
-                self.seekthread = Thread(target=self.seekbar_updater, args=())
-                self.seekthread.daemon = True
+                self.stdout_thread = Thread(target=self.enqueue_pipe, args=(self.player_process.stdout, self.q))
+                self.stdout_thread.daemon = True
+                self.stdout_thread.start()
+                # self.seekthread = Thread(target=self.seekbar_updater, args=())
+                # self.seekthread.daemon = True
                 #self.seekthread.start()
             except:
                 showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[1]),str(sys.exc_info()[2])]))
 
     def getvidtime(self):
-        if self.mplayer_isrunning():
-            self.command_player("get_percent_pos")
-            self.player_process.stdout.flush()
-            str = self.readpipe()
-            return str
+        pproc = Popen(["mplayer","-really-quiet","-nosound","-vo","null","-identify",self.filenm], stdout=PIPE)
+        pproc.stdout.flush()
+        print pproc.stdout.read()
+        pproc.kill()
 
     def playpause(self, event=None):
         if self.player_process is None:
@@ -148,10 +146,8 @@ class mainframe(Frame):
             self.playbutton.configure(text="Play")
         else:
             self.playbutton.configure(text="Pause")
-        self.command_player("get_percent_pos")
-        for line in self.player_process.stdout.read():
-            print line
         self.command_player("pause")
+        print self.readpipe()
 
     def setwh(self,w,h):
         self.videoFrame.configure(width=w, height=h)
