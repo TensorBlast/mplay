@@ -7,12 +7,15 @@ from tkMessageBox import showerror, showinfo
 from subprocess import *
 from threading import Thread
 from Queue import Queue, Empty, LifoQueue
+import os, sys
+import mplayer
 
 class mainframe(Frame):
 
     def __init__(self, parent):
         Frame.__init__(self, parent)
         self.filenm=None
+        self.streamnm = None
         self.pack(fill=BOTH, expand=1)
         self.parent = parent
         self.initplayer()
@@ -21,6 +24,7 @@ class mainframe(Frame):
         self.paused = True
         self.trackmouse = True
         self.stdout_thread = None
+        self.stream = False
         self.q = LifoQueue()
 
     def initplayer(self):
@@ -32,21 +36,24 @@ class mainframe(Frame):
         self.buttonframe.pack(side="bottom", fill="x", expand=False)
 
         self.seekbar = Scale(self.buttonframe, from_= 0, to=100, orient=HORIZONTAL)
-        self.seekbar.grid(column=0, columnspan=3, row=0, sticky=[N, E, S, W])
+        self.seekbar.grid(column=0, columnspan=4, row=0, sticky=[N, E, S, W])
 
-        self.selectbutton = Button(self.buttonframe, text="Select")
+        self.selectbutton = Button(self.buttonframe, text="Select File")
         self.selectbutton.grid(column=0, row=1, sticky=[E,W])
+        self.streambutton = Button(self.buttonframe, text="Open HTTP", command=self.streamopen)
+        self.streambutton.grid(column=1, row=1, sticky=[E,W])
         self.playbutton = Button(self.buttonframe, text="Play")
         self.playbutton.config(command=self.playpause)
-        self.playbutton.grid(column=1, row=1, sticky=[E,W])
+        self.playbutton.grid(column=2, row=1, sticky=[E,W])
         self.fullscreenbutton = Button(self.buttonframe, text="Fullscreen", command=self.togglefullscreen)
-        self.fullscreenbutton.grid(column=2, row=1, sticky=[E,W])
+        self.fullscreenbutton.grid(column=3, row=1, sticky=[E,W])
         for child in self.buttonframe.winfo_children(): child.grid_configure(padx=5, pady=5)
         self.buttonframe.rowconfigure(0, weight=1)
         self.buttonframe.rowconfigure(1, weight=1)
         self.buttonframe.columnconfigure(0, weight=1)
         self.buttonframe.columnconfigure(1, weight=1)
         self.buttonframe.columnconfigure(2, weight=1)
+        self.buttonframe.columnconfigure(3, weight=1)
 
         self.selectbutton.configure(command=self.fileopen)
         self.videoFrame.bind("<Button-1>",self.playpause)
@@ -87,8 +94,22 @@ class mainframe(Frame):
             self.videoFrame.after(5000, self.cursorhandler)
 
     def fileopen(self):
-        self.filenm = self.filenm=askopenfilename(filetypes=[("Supported Files","*.mp4;*.mkv;*.mpg;*.avi;*.mov")])
+        self.filenm = askopenfilename(filetypes=[("Supported Files","*.mp4;*.mkv;*.mpg;*.avi;*.mov"),("All Files","*.*")])
+        self.stream = False
         self.play()
+
+    def streamopen(self):
+        self.streamnm = Dlog(self.parent)
+        if self.streamnm.result is not None:
+            s = str(self.streamnm)
+        else:
+            return
+        if s.startswith('http'):
+            self.stream = True
+            self.play()
+        else:
+            self.stream = False
+            showerror("Error","Incorrect Entry")
 
     def play(self):
         if self.filenm is not None and self.filenm != "":
@@ -98,10 +119,13 @@ class mainframe(Frame):
             try:
                 self.paused = False
                 self.playbutton.configure(text="Pause")
-                self.player_process = Popen(["mplayer","-fs","-slave","-quiet","-wid",str(winid),self.filenm],stdin=PIPE, stdout=PIPE)
-                self.stdout_thread = Thread(target=self.enqueue_pipe, args=(self.player_process.stdout, self.q))
-                self.stdout_thread.daemon = True
-                self.stdout_thread.start()
+                if not self.stream:
+                    self.player_process = Popen(["mplayer","-fs","-slave","-quiet","-wid",str(winid),self.filenm],stdin=PIPE, stdout=PIPE)
+                else:
+                    self.player_process = Popen(["mplayer","-fs","-slave","-quiet","-wid",str(winid),self.streamnm], stdin=PIPE, stdout=PIPE)
+                # self.stdout_thread = Thread(target=self.enqueue_pipe, args=(self.player_process.stdout, self.q))
+                # self.stdout_thread.daemon = True
+                # self.stdout_thread.start()
                 self.seekthread = Thread(target=self.seekbar_updater, args=())
                 self.seekthread.daemon = True
                 #self.seekthread.start()
@@ -124,6 +148,9 @@ class mainframe(Frame):
             self.playbutton.configure(text="Play")
         else:
             self.playbutton.configure(text="Pause")
+        self.command_player("get_percent_pos")
+        for line in self.player_process.stdout.read():
+            print line
         self.command_player("pause")
 
     def setwh(self,w,h):
@@ -142,8 +169,7 @@ class mainframe(Frame):
     def command_player(self, comd):
         if self.mplayer_isrunning():
             try:
-                self.player_process.stdin.flush()
-                self.player_process.stdin.write("%s\n"%comd)
+                self.player_process.stdin.write("%s\r\n"%comd)
                 self.player_process.stdin.flush()
             except :
                 showerror("Error","Error passing command to mplayer\n%s"%sys.exc_info()[1])
@@ -172,12 +198,38 @@ class mainframe(Frame):
         if self.mplayer_isrunning():
             self.player_process.stdin.write("quit\n")
             self.player_process.stdin.flush()
-            self.player_process.stdout.flush()
-            print self.readpipe()
+            print self.player_process.stdout.read()
         self.player_process = None
 
 
 primary = None
+
+class Dlog:
+
+    def __init__(self, root):
+        self.frm = top = Toplevel(root)
+        top.protocol("WM_DELETE_WINDOW", self.endtask)
+        top.title("Configure Stream")
+
+        self.lbl = Label(top, text="Enter URL of stream\nEg:192.168.0.1:8080").pack()
+        self.e = Entry(top)
+        self.e.pack(padx=5, pady=5)
+
+        self.result = ""
+        b = Button(top, command=self.enter, text="OK").pack(pady=5)
+        top.wait_window(top)
+
+    def enter(self):
+        self.result = self.e.get()
+        self.frm.destroy()
+
+    def endtask(self):
+        self.result = None
+        self.frm.destroy()
+
+    def __str__(self):
+        return self.result
+
 
 def stopeverything():
     global primary
@@ -188,6 +240,6 @@ def stopeverything():
 if __name__ == "__main__":
     root = Tk()
     root.title('MPV X Video Player')
-    root.wm_protocol("WM_DELETE_WINDOW", stopeverything)
+    root.protocol("WM_DELETE_WINDOW", stopeverything)
     primary = mainframe(root)
     root.mainloop()
