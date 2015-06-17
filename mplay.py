@@ -2,13 +2,14 @@ __author__ = 'ankit'
 
 from Tkinter import *
 from ttk import Frame
-from tkFileDialog import askopenfilename, askopenfile
-from tkMessageBox import showerror, showinfo
+from tkFileDialog import askopenfilename
+from tkMessageBox import showerror
 from subprocess import *
 from threading import Thread
 from Queue import Queue, Empty, LifoQueue
-import os, sys
+import os, sys, tempfile
 
+fifofilename = "fifotmp"
 class mainframe(Frame):
 
     def __init__(self, parent):
@@ -111,6 +112,7 @@ class mainframe(Frame):
             showerror("Error","Incorrect Entry")
 
     def play(self):
+        global fifofilename
         if self.filenm is not None and self.filenm != "":
             winid = self.videoFrame.winfo_id()
             if self.mplayer_isrunning():
@@ -132,10 +134,10 @@ class mainframe(Frame):
                 showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[1]),str(sys.exc_info()[2])]))
 
     def getvidtime(self):
-        pproc = Popen(["mplayer","-really-quiet","-nosound","-vo","null","-identify",self.filenm], stdout=PIPE)
-        pproc.stdout.flush()
-        print pproc.stdout.read()
-        pproc.kill()
+        if self.mplayer_isrunning():
+            self.command_player("osd_show_progression")
+            output = "fu"
+            return output
 
     def playpause(self, event=None):
         if self.player_process is None:
@@ -147,7 +149,6 @@ class mainframe(Frame):
         else:
             self.playbutton.configure(text="Pause")
         self.command_player("pause")
-        print self.readpipe()
 
     def setwh(self,w,h):
         self.videoFrame.configure(width=w, height=h)
@@ -163,11 +164,12 @@ class mainframe(Frame):
             return False
 
     def command_player(self, comd):
+        global fifofilename
         if self.mplayer_isrunning():
             try:
-                self.player_process.stdin.write("%s\r\n"%comd)
+                self.player_process.stdin.write("\r\n%s\r\n"%comd)
                 self.player_process.stdin.flush()
-            except :
+            except:
                 showerror("Error","Error passing command to mplayer\n%s"%sys.exc_info()[1])
 
     def enqueue_pipe(self, out, q):
