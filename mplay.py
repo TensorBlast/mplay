@@ -5,9 +5,10 @@ from ttk import Frame
 from tkFileDialog import askopenfilename
 from tkMessageBox import showerror
 from subprocess import *
-from threading import Thread
+from threading import Thread, Timer
 from Queue import Queue, Empty, LifoQueue
 import os, sys, tempfile
+import itertools
 
 fifofilename = "fifotmp"
 class mainframe(Frame):
@@ -20,12 +21,16 @@ class mainframe(Frame):
         self.parent = parent
         self.initplayer()
         self.player_process = None
+        self.seekthread = None
         self.fstate = False
         self.paused = True
         self.trackmouse = True
         self.stdout_thread = None
         self.stream = False
+        self.inhibit_slider_trigger = False
         self.q = LifoQueue()
+        self.currtime = 0
+        self.endtime = -1
 
     def initplayer(self):
         self.parentframe = Frame(self)
@@ -37,6 +42,7 @@ class mainframe(Frame):
 
         self.seekbar = Scale(self.buttonframe, from_= 0, to=100, orient=HORIZONTAL)
         self.seekbar.grid(column=0, columnspan=4, row=0, sticky=[N, E, S, W])
+        self.seekbar.configure(command=self.seeked)
 
         self.selectbutton = Button(self.buttonframe, text="Select File")
         self.selectbutton.grid(column=0, row=1, sticky=[E,W])
@@ -127,17 +133,23 @@ class mainframe(Frame):
                 self.stdout_thread = Thread(target=self.enqueue_pipe, args=(self.player_process.stdout, self.q))
                 self.stdout_thread.daemon = True
                 self.stdout_thread.start()
-                # self.seekthread = Thread(target=self.seekbar_updater, args=())
-                # self.seekthread.daemon = True
-                #self.seekthread.start()
+                self.emptypipe()
+                self.seekthread = Thread(target=self.seekbar_setup, args=())
+                self.seekthread.daemon = True
+                self.seekthread.start()
             except:
-                showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[1]),str(sys.exc_info()[2])]))
+                showerror("Error","".join(["Couldn't play video:\n",str(sys.exc_info()[:])]))
 
     def getvidtime(self):
         if self.mplayer_isrunning():
-            self.command_player("osd_show_progression")
-            output = "fu"
-            return output
+            self.command_player("get_time_length")
+            output = self.readpipe()
+            while "ANS_LENGTH" not in output:
+                output = self.readpipe()
+            if "ANS_LENGTH" in output:
+                return output.split('ANS_LENGTH=')[1]
+            else:
+                return 0
 
     def playpause(self, event=None):
         if self.player_process is None:
@@ -167,36 +179,81 @@ class mainframe(Frame):
         global fifofilename
         if self.mplayer_isrunning():
             try:
+                self.player_process.stdin.flush()
                 self.player_process.stdin.write("\r\n%s\r\n"%comd)
+                # for _ in itertools.repeat(None,8192):
+                #     self.player_process.stdin.write("\n")
                 self.player_process.stdin.flush()
             except:
                 showerror("Error","Error passing command to mplayer\n%s"%sys.exc_info()[1])
 
     def enqueue_pipe(self, out, q):
-        print 'enq'
+        print 'Working on reading mplayer pipe output...'
         for line in iter(out.readline, b''):
             q.put(line)
         out.close()
 
+    def seekbar_setup(self):
+        pos = '0'
+        trial = 0
+        while float(pos)<1:
+            trial += 1
+            pos = self.getvidtime()
+        print "WE TRIED %d TIMES" % trial
+        self.seekbar.config(to=int(float(pos)))
+        self.endtime = int(float(pos))
+        Timer(1, self.seekbar_updater).start()
+
     def seekbar_updater(self):
-        pos = self.getvidtime()
-        self.seekbar.set(int(pos))
+        if not self.paused:
+            self.currtime += 1
+            self.seekbar.set(self.currtime)
+            self.inhibit_slider_trigger = True
+        else:
+            self.currtime = self.seekbar.get()
+        Timer(1, self.seekbar_updater).start()
+
+    def seeked(self,e):
+        pos = self.seekbar.get()
+        print "We changed pos to :%d"% pos
+
+        x, y = self.parent.winfo_pointerx(), self.parent.winfo_pointery()
+        windowx, windowy = self.parent.winfo_width(), self.parent.winfo_height()
+        if windowy - 30 <= y:
+            if self.inhibit_slider_trigger:
+                self.inhibit_slider_trigger = False
+                return
+            self.command_player("seek %d 2"%pos)
+            if self.paused:
+                self.command_player("pause")
+
+    def startmousetrack(self):
+        self.trackmouse = True
 
     def readpipe(self):
-        # print 'Trying to read PIPE...'
         line = ""
         try:
             line = self.q.get_nowait()
         except Empty:
             print "Empty PIPE"
-        else:
+        finally:
             return line
+
+    def emptypipe(self):
+        str = ''
+        try:
+            while not self.q.empty():
+                str += self.q.get_nowait()
+        except Empty:
+            print "Empty Pipe"
+        finally:
+            return str
 
     def stop(self):
         if self.mplayer_isrunning():
             self.player_process.stdin.write("quit\n")
             self.player_process.stdin.flush()
-            print self.player_process.stdout.read()
+            print self.emptypipe()
         self.player_process = None
 
 
