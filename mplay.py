@@ -72,12 +72,17 @@ class mainframe(Frame):
         if self.trackmouse:
             x, y = self.parent.winfo_pointerx(), self.parent.winfo_pointery()
             windowx, windowy = self.parent.winfo_width(), self.parent.winfo_height()
-            if self.fstate and (windowy - 30 <= y):
-                self.buttonframe.pack(side="bottom", fill="x", expand=False)
-                self.trackmouse = False
-                self.parent.after(5000, self.mousetracker)
+            if windowy - 30 <= y:
+                if self.fstate:
+                    self.buttonframe.pack(side="bottom", fill="x", expand=False)
+                    self.trackmouse = False
+                    self.parent.after(5000, self.mousetracker)
+                self.inhibit_slider_trigger = False
             elif self.fstate:
                 self.buttonframe.pack_forget()
+                self.inhibit_slider_trigger = True
+            else:
+                self.inhibit_slider_trigger = True
 
     def mousetracker(self):
         print 'Mouse Tracker'
@@ -199,16 +204,14 @@ class mainframe(Frame):
         while float(pos)<1:
             trial += 1
             pos = self.getvidtime()
-        print "WE TRIED %d TIMES" % trial
         self.seekbar.config(to=int(float(pos)))
         self.endtime = int(float(pos))
         Timer(1, self.seekbar_updater).start()
 
     def seekbar_updater(self):
-        if not self.paused:
+        if not self.paused and self.inhibit_slider_trigger:
             self.currtime += 1
             self.seekbar.set(self.currtime)
-            self.inhibit_slider_trigger = True
         else:
             self.currtime = self.seekbar.get()
         Timer(1, self.seekbar_updater).start()
@@ -219,10 +222,7 @@ class mainframe(Frame):
 
         x, y = self.parent.winfo_pointerx(), self.parent.winfo_pointery()
         windowx, windowy = self.parent.winfo_width(), self.parent.winfo_height()
-        if windowy - 30 <= y:
-            if self.inhibit_slider_trigger:
-                self.inhibit_slider_trigger = False
-                return
+        if not self.inhibit_slider_trigger and windowy - 30 <= y:
             self.command_player("seek %d 2"%pos)
             if self.paused:
                 self.command_player("pause")
